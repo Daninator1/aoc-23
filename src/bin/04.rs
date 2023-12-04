@@ -1,5 +1,3 @@
-use std::iter::Filter;
-use std::slice::Iter;
 use regex::Regex;
 advent_of_code::solution!(4);
 

@@ -1,4 +1,3 @@
-use std::collections::hash_map::Keys;
 use std::collections::HashMap;
 advent_of_code::solution!(2);
 
