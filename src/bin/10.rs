@@ -1,4 +1,3 @@
-use itertools::Itertools;
 use num::integer::div_ceil;
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
@@ -68,9 +67,20 @@ fn find_first_conn(map: &[Vec<Tile>], start: (usize, usize)) -> ((usize, usize),
     panic!("no connecting pipe found")
 }
 
+fn find_first_conn_2(map: &[Vec<Tile>], start: (usize, usize)) -> ((usize, usize), (Direction, Direction)) {
+    for dir in Direction::iter() {
+        if let Some(((x, y), Some(new_dir))) = find_conn(map, (start, dir)) {
+            return ((x, y), (dir.inverse(), new_dir));
+        }
+    }
+
+    panic!("no connecting pipe found")
+}
+
 fn find_conn(map: &[Vec<Tile>], conn: ((usize, usize), Direction)) -> Option<((usize, usize), Option<Direction>)> {
     let conn_dir_to = conn.1;
     let (conn_x, conn_y) = conn.0;
+
     match conn_dir_to {
         Direction::North => {
             match map[conn_x - 1][conn_y] {
@@ -114,9 +124,6 @@ pub fn part_one(input: &str) -> Option<u32> {
 
     let start_pos = find_start(&map).expect("no start tile found");
 
-    // dbg!(&map);
-    // dbg!(&start_pos);
-
     let mut conns = vec![find_first_conn(&map, start_pos)];
 
     loop {
@@ -127,14 +134,48 @@ pub fn part_one(input: &str) -> Option<u32> {
         }
     }
 
-    // dbg!(&conns);
-    // dbg!(&conns.len());
-
     Some(div_ceil(conns.len() as u32, 2))
 }
 
 pub fn part_two(input: &str) -> Option<u32> {
-    None
+    let map: Vec<Vec<Tile>> = input.lines().map(|line| {
+        line.chars().map(Tile::from).collect()
+    }).collect();
+
+    let start_pos = find_start(&map).expect("no start tile found");
+
+    let mut conns: Vec<((usize, usize), (Direction, Direction))> = vec![find_first_conn_2(&map, start_pos)];
+
+    loop {
+        let curr = conns[conns.len() - 1];
+        let next = find_conn(&map, (curr.0, curr.1.1)).expect("no connecting tile found");
+        match next.1 {
+            None => { break; }
+            Some(dir) => { conns.push((next.0, (curr.1.1.inverse(), dir))); }
+        }
+    }
+
+    conns.push((start_pos, (conns[conns.len() - 1].1.1.inverse(), conns[0].1.0.inverse())));
+
+    let mut count = 0;
+
+    for (row_idx, row) in map.iter().enumerate() {
+        let mut inside = false;
+
+        for (col_idx, _) in row.iter().enumerate() {
+            if let Some(conn) = conns.iter().find(|c| c.0 == (row_idx, col_idx)) {
+                match conn.1 {
+                    (Direction::South, _) => { inside = !inside }
+                    (_, Direction::South) => { inside = !inside }
+                    _ => {}
+                }
+            } else if inside {
+                count += 1;
+            }
+        }
+    }
+
+    Some(count)
 }
 
 #[cfg(test)]
@@ -150,6 +191,6 @@ mod tests {
     #[test]
     fn test_part_two() {
         let result = part_two(&advent_of_code::template::read_file("examples", DAY));
-        assert_eq!(result, None);
+        assert_eq!(result, Some(8));
     }
 }
