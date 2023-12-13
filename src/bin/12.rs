@@ -93,6 +93,75 @@ fn get_possible_states_2<'a>(states: &'a [State]) -> Box<dyn Iterator<Item=Vec<S
     };
 }
 
+fn get_possible_states_3(curr_states: &[State], rem_states: &[State], checksum: &[usize]) -> Option<Vec<Vec<State>>> {
+    let mut calc_checksum: Vec<usize> = Vec::new();
+    let mut counter: usize = 0;
+
+    for state in curr_states.iter() {
+        match state {
+            State::Working => {
+                if counter > 0 {
+                    calc_checksum.push(counter);
+                }
+                counter = 0;
+            }
+            State::Damaged => {
+                counter += 1;
+            }
+            State::Unknown => { panic!("unknown state encountered") }
+        }
+    }
+
+    if counter > 0 { calc_checksum.push(counter); }
+
+    // dbg!(&curr_states);
+    // dbg!(&rem_states);
+    // dbg!(&calc_checksum);
+    // dbg!(&checksum);
+
+    if calc_checksum.is_empty() ||
+        (checksum.starts_with(calc_checksum.split_last().unwrap().1) &&
+            calc_checksum.len() <= checksum.len() &&
+            calc_checksum.last().unwrap() <= &checksum[calc_checksum.len() - 1] &&
+            checksum[calc_checksum.len() - 1] - calc_checksum.last().unwrap() <= rem_states.len()) {
+        if rem_states.is_empty() {
+            if checksum == calc_checksum {
+                return Some(vec!(curr_states.to_vec()));
+            } else {
+                return None;
+            }
+        }
+
+        let next_state = rem_states[0];
+        return match next_state {
+            State::Unknown => {
+                let mut result: Vec<Vec<State>> = Vec::new();
+
+                let working = get_possible_states_3(curr_states.iter().chain(iter::once(&State::Working)).cloned().collect::<Vec<State>>().as_slice(), &rem_states[1..], checksum);
+                if let Some(w) = working {
+                    w.into_iter().for_each(|seq| result.push(seq));
+                }
+
+                let damaged = get_possible_states_3(curr_states.iter().chain(iter::once(&State::Damaged)).cloned().collect::<Vec<State>>().as_slice(), &rem_states[1..], checksum);
+                if let Some(d) = damaged {
+                    d.into_iter().for_each(|seq| result.push(seq));
+                }
+
+                if result.len() > 0 {
+                    Some(result)
+                } else {
+                    None
+                }
+            }
+            known => {
+                get_possible_states_3(curr_states.iter().chain(iter::once(&known)).cloned().collect::<Vec<State>>().as_slice(), &rem_states[1..], checksum)
+            }
+        };
+    } else {
+        None
+    }
+}
+
 pub fn part_one(input: &str) -> Option<usize> {
     let lines: Vec<(Vec<State>, Vec<usize>)> = input.lines().map(|line| {
         let (first_part, second_part) = line.split(' ').tuples().next().unwrap();
@@ -102,31 +171,13 @@ pub fn part_one(input: &str) -> Option<usize> {
     }).collect();
 
     let result: usize = lines.par_iter().map(|(states, checksum)| {
-        let possible_sequences = get_possible_states_2(&states);
-
-        let possible_counter = possible_sequences.filter(|sequence| {
-            let mut calc_checksum: Vec<usize> = Vec::new();
-            let mut counter: usize = 0;
-
-            for state in sequence.iter() {
-                match state {
-                    State::Working => {
-                        if counter > 0 { calc_checksum.push(counter); }
-                        counter = 0;
-                    }
-                    State::Damaged => {
-                        counter += 1;
-                    }
-                    State::Unknown => { panic!("unknown state encountered") }
-                }
+        let possible_sequences = get_possible_states_3(&[], states, checksum);
+        match possible_sequences {
+            None => 0,
+            Some(s) => {
+                return s.len();
             }
-
-            if counter > 0 { calc_checksum.push(counter); }
-
-            &calc_checksum == checksum
-        }).count();
-
-        possible_counter
+        }
     }).sum();
 
     Some(result)
@@ -151,36 +202,13 @@ pub fn part_two(input: &str) -> Option<usize> {
     }).collect();
 
     let result: usize = lines.par_iter().map(|(states, checksum)| {
-        let possible_sequences = get_possible_states_2(&states);
-
-        let possible_counter = possible_sequences.filter(|sequence| {
-            let mut calc_checksum: Vec<usize> = Vec::new();
-            let mut counter: usize = 0;
-
-            for state in sequence.iter() {
-                match state {
-                    State::Working => {
-                        if counter > 0 {
-                            calc_checksum.push(counter);
-                            if !checksum.starts_with(&calc_checksum) {
-                                return false;
-                            }
-                        }
-                        counter = 0;
-                    }
-                    State::Damaged => {
-                        counter += 1;
-                    }
-                    State::Unknown => { panic!("unknown state encountered") }
-                }
+        let possible_sequences = get_possible_states_3(&[], states, checksum);
+        match possible_sequences {
+            None => 0,
+            Some(s) => {
+                return s.len();
             }
-
-            if counter > 0 { calc_checksum.push(counter); }
-
-            &calc_checksum == checksum
-        }).count();
-
-        possible_counter
+        }
     }).sum();
 
     Some(result)
