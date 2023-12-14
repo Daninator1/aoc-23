@@ -202,11 +202,11 @@ pub fn part_one(input: &str) -> Option<usize> {
 }
 
 fn unfold_sequence(states: &Vec<State>) -> Vec<State> {
-    states.iter().chain(iter::once(&State::Unknown)).cloned().cycle().take((states.len() + 1) * 5 - 1).collect()
+    states.iter().chain(iter::once(&State::Unknown)).cloned().cycle().take((states.len() + 1) * 2 - 1).collect()
 }
 
 fn unfold_checksum(checksum: &Vec<usize>) -> Vec<usize> {
-    checksum.iter().cloned().cycle().take(checksum.len() * 5).collect()
+    checksum.iter().cloned().cycle().take(checksum.len() * 2).collect()
 }
 
 fn calculate_checksum(seq: &Vec<State>) -> Vec<usize> {
@@ -391,18 +391,20 @@ fn get_possible_sequences_exp_2(sequences: Vec<Vec<State>>, filler_sequences: Ve
 }
 
 pub fn part_two(input: &str) -> Option<usize> {
-    let sequences: Vec<(Vec<State>, Vec<usize>)> = input.lines().map(|line| {
+    let sequences: Vec<((Vec<State>, Vec<usize>), (Vec<State>, Vec<usize>))> = input.lines().map(|line| {
         let (first_part, second_part) = line.split(' ').tuples().next().unwrap();
         let init_seq: Vec<State> = first_part.chars().map(State::from).collect();
+        let exp_seq: Vec<State> = unfold_sequence(&init_seq);
         let init_checksum: Vec<usize> = second_part.split(',').map(|c| c.parse::<usize>().unwrap()).collect();
         let exp_checksum: Vec<usize> = unfold_checksum(&init_checksum);
-        (init_seq, exp_checksum)
+        ((init_seq, init_checksum), (exp_seq, exp_checksum))
     }).collect();
 
-    let result = sequences.par_iter().map(|(seq, checksum)| {
-        let possible_sequences = get_possible_states(seq);
-        let filler_sequences = vec!(vec!(State::Damaged), vec!(State::Working));
-        get_possible_sequences_exp_2(possible_sequences, filler_sequences, checksum).len()
+    let result = sequences.par_iter().map(|(init_seq, exp_seq)| {
+        let first = get_possible_states_3(&[], &init_seq.0, &init_seq.1).unwrap().len();
+        let second = get_possible_states_3(&[], &exp_seq.0, &exp_seq.1).unwrap().len();
+        if second % first > 0 { panic!("{:?}", &init_seq) }
+        first * ((second / first).pow(5 - 1))
     }).sum();
 
     Some(result)
