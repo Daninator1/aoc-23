@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::io::Read;
 use std::iter;
 use itertools::{Itertools, repeat_n, unfold};
@@ -6,7 +5,7 @@ use rayon::iter::{*};
 use strum_macros::EnumIter;
 advent_of_code::solution!(12);
 
-#[derive(Debug, Eq, PartialEq, Copy, Clone, Hash)]
+#[derive(Debug, Eq, PartialEq, Copy, Clone)]
 enum State {
     Working,
     Damaged,
@@ -171,47 +170,14 @@ pub fn part_one(input: &str) -> Option<usize> {
         (states, checksum)
     }).collect();
 
-    let mut cache: HashMap<&Vec<State>, Vec<Vec<State>>> = HashMap::new();
-
-    let result: usize = lines.iter().map(|(seq, checksum)| {
-        let mut cached_possible_sequences: Option<Vec<Vec<State>>> = None;
-
-        for (k, v) in &cache {
-            if let Some(idx) = k.windows(seq.len()).position(|window| window == seq) {
-                cached_possible_sequences = Some(v.iter().map(|x| x[idx..seq.len() - 1].to_vec()).collect::<Vec<Vec<State>>>());
-                break;
+    let result: usize = lines.par_iter().map(|(states, checksum)| {
+        let possible_sequences = get_possible_states_3(&[], states, checksum);
+        match possible_sequences {
+            None => 0,
+            Some(s) => {
+                return s.len();
             }
         }
-
-        let possible_sequences = cached_possible_sequences.unwrap_or_else(|| {
-            let new_possible_states = get_possible_states(seq);
-            cache.insert(seq, new_possible_states.clone());
-            new_possible_states
-        });
-
-        let possible_counter = possible_sequences.par_iter().filter(|poss_seq| {
-            let mut calc_checksum: Vec<usize> = Vec::new();
-            let mut counter: usize = 0;
-
-            for state in poss_seq.iter() {
-                match state {
-                    State::Working => {
-                        if counter > 0 { calc_checksum.push(counter); }
-                        counter = 0;
-                    }
-                    State::Damaged => {
-                        counter += 1;
-                    }
-                    State::Unknown => { panic!("unknown state encountered") }
-                }
-            }
-
-            if counter > 0 { calc_checksum.push(counter); }
-
-            &calc_checksum == checksum
-        }).count();
-
-        possible_counter
     }).sum();
 
     Some(result)
@@ -235,47 +201,14 @@ pub fn part_two(input: &str) -> Option<usize> {
         (states, checksum)
     }).collect();
 
-    let mut cache: HashMap<&Vec<State>, Vec<Vec<State>>> = HashMap::new();
-
-    let result: usize = lines.par_iter().map(|(seq, checksum)| {
-        let mut cached_possible_sequences: Option<Vec<Vec<State>>> = None;
-
-        for (k, v) in &cache {
-            if let Some(idx) = k.windows(seq.len()).position(|window| window == seq) {
-                cached_possible_sequences = Some(v.iter().map(|x| x[idx..seq.len() - 1].to_vec()).collect::<Vec<Vec<State>>>());
-                break;
+    let result: usize = lines.par_iter().map(|(states, checksum)| {
+        let possible_sequences = get_possible_states_3(&[], states, checksum);
+        match possible_sequences {
+            None => 0,
+            Some(s) => {
+                return s.len();
             }
         }
-
-        let possible_sequences = cached_possible_sequences.unwrap_or_else(|| {
-            let new_possible_states = get_possible_states(seq);
-            cache.insert(seq, new_possible_states.clone());
-            new_possible_states
-        });
-
-        let possible_counter = possible_sequences.par_iter().filter(|poss_seq| {
-            let mut calc_checksum: Vec<usize> = Vec::new();
-            let mut counter: usize = 0;
-
-            for state in poss_seq.iter() {
-                match state {
-                    State::Working => {
-                        if counter > 0 { calc_checksum.push(counter); }
-                        counter = 0;
-                    }
-                    State::Damaged => {
-                        counter += 1;
-                    }
-                    State::Unknown => { panic!("unknown state encountered") }
-                }
-            }
-
-            if counter > 0 { calc_checksum.push(counter); }
-
-            &calc_checksum == checksum
-        }).count();
-
-        possible_counter
     }).sum();
 
     Some(result)
