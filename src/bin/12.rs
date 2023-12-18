@@ -1,10 +1,7 @@
 use std::collections::HashMap;
-use std::io::Read;
 use std::iter;
-use itertools::{Itertools, izip, repeat_n, unfold};
+use itertools::{Itertools};
 use rayon::iter::{*};
-use regex::Regex;
-use strum_macros::EnumIter;
 advent_of_code::solution!(12);
 
 #[derive(Debug, Eq, PartialEq, Copy, Clone)]
@@ -25,160 +22,84 @@ impl From<char> for State {
     }
 }
 
-fn get_possible_sequences(curr_states: &[State], rem_states: &[State], checksum: &[usize]) -> Option<Vec<Vec<State>>> {
-    let mut calc_checksum: Vec<usize> = Vec::new();
-    let mut counter: usize = 0;
-
-    for state in curr_states.iter() {
-        match state {
-            State::Working => {
-                if counter > 0 {
-                    calc_checksum.push(counter);
-                }
-                counter = 0;
-            }
-            State::Damaged => {
-                counter += 1;
-            }
-            State::Unknown => { panic!("unknown state encountered") }
-        }
-    }
-
-    if counter > 0 { calc_checksum.push(counter); }
-
-    // dbg!(&curr_states);
-    // dbg!(&rem_states);
-    // dbg!(&calc_checksum);
-    // dbg!(&checksum);
-
-    if calc_checksum.is_empty() ||
-        (checksum.starts_with(calc_checksum.split_last().unwrap().1) &&
-            calc_checksum.len() <= checksum.len() &&
-            calc_checksum.last().unwrap() <= &checksum[calc_checksum.len() - 1] &&
-            checksum[calc_checksum.len() - 1] - calc_checksum.last().unwrap() <= rem_states.len()) {
-        if rem_states.is_empty() {
-            if checksum == calc_checksum {
-                return Some(vec!(curr_states.to_vec()));
-            } else {
-                return None;
-            }
-        }
-
-        let next_state = rem_states[0];
-        return match next_state {
-            State::Unknown => {
-                let mut result: Vec<Vec<State>> = Vec::new();
-
-                let working = get_possible_sequences(curr_states.iter().chain(iter::once(&State::Working)).cloned().collect::<Vec<State>>().as_slice(), &rem_states[1..], checksum);
-                if let Some(w) = working {
-                    w.into_iter().for_each(|seq| result.push(seq));
-                }
-
-                let damaged = get_possible_sequences(curr_states.iter().chain(iter::once(&State::Damaged)).cloned().collect::<Vec<State>>().as_slice(), &rem_states[1..], checksum);
-                if let Some(d) = damaged {
-                    d.into_iter().for_each(|seq| result.push(seq));
-                }
-
-                if result.len() > 0 {
-                    Some(result)
-                } else {
-                    None
-                }
-            }
-            known => {
-                get_possible_sequences(curr_states.iter().chain(iter::once(&known)).cloned().collect::<Vec<State>>().as_slice(), &rem_states[1..], checksum)
-            }
-        };
-    } else {
-        None
-    }
+fn calc(sequence: &[State], seq_idx: usize, checksums: &[usize], checksums_idx: usize) -> usize {
+    let mut cache = HashMap::new();
+    calc_cache(sequence, seq_idx, checksums, checksums_idx, &mut cache)
 }
 
-fn calc(sequence: &[State], checksums: &[usize]) -> usize {
-    let mut checksums_idx: usize = 0;
-    let mut next_idx: usize = 0;
-    let mut count: usize = 0;
-
-    let mut cache: HashMap<(usize, usize), usize> = HashMap::new();
-
-    for i in 0..sequence.len() {
-        if i < next_idx { continue; }
-        if checksums_idx >= checksums.len() { break; }
-
-        match sequence[i] {
-            State::Working => {}
-            _ => {
-                let chunk_seq = sequence[i..=i + checksums[checksums_idx]].to_vec();
-                next_idx = i + checksums[checksums_idx] + 1;
-
-                // don't know when to advance to the next checksum
-
-                let chunk_count = match cache.get(&(chunk_seq.len(), checksums[checksums_idx])) {
-                    None => {
-                        let c = match get_possible_sequences(&[], &chunk_seq, &[checksums[checksums_idx]]) {
-                            None => {
-                                checksums_idx += 1;
-
-                                let chunk_seq = sequence[i..=i + checksums[checksums_idx]].to_vec();
-                                next_idx = i + checksums[checksums_idx] + 1;
-                                match cache.get(&(chunk_seq.len(), checksums[checksums_idx])) {
-                                    None => get_possible_sequences(&[], &chunk_seq, &[checksums[checksums_idx]]).unwrap().len(),
-                                    Some(c) => *c,
-                                }
-                            }
-                            Some(c) => c.len(),
-                        };
-                        cache.insert((chunk_seq.len(), checksums[checksums_idx]), c);
-                        c
-                    }
-                    Some(c) => *c,
-                };
-
-                count += chunk_count;
-            }
-        }
+fn calc_cache(sequence: &[State], seq_idx: usize, checksums: &[usize], checksums_idx: usize, cache: &mut HashMap<(usize, usize), usize>) -> usize {
+    if let Some(cached_value) = cache.get(&(seq_idx, checksums_idx)) {
+        return *cached_value;
     }
 
-    count
+    // check if the current group can be satisfied from this position:
+    let consume_group = checksums.get(checksums_idx).map_or(0, |checksum| {
+        // group is long enough to fit within remaining springs
+        if (seq_idx + checksum) > sequence.len() {
+            return 0;
+        }
+
+        // group does not contain Working springs
+        if (0..*checksum).any(|pos| sequence.get(seq_idx + pos) == Some(&State::Working)) {
+            return 0;
+        }
+
+        // item after group is not a Damaged spring
+        if sequence.get(seq_idx + checksum) == Some(&State::Damaged) {
+            return 0;
+        }
+
+        // if none of the above checks failed, we have a group which we can consume
+        calc_cache(sequence, seq_idx + checksum + 1, checksums, checksums_idx + 1, cache)
+    });
+
+    // also check if we can skip this position
+    let skip = match sequence.get(seq_idx) {
+        None => usize::from(checksums_idx >= checksums.len()),
+        Some(State::Damaged) => 0,
+        Some(_) => calc_cache(sequence, seq_idx + 1, checksums, checksums_idx, cache),
+    };
+
+    // add the consume_group and skip possibilities together, record in cache, and return
+    let result = consume_group + skip;
+    cache.insert((seq_idx, checksums_idx), result);
+    result
 }
 
 pub fn part_one(input: &str) -> Option<usize> {
-    let dot_regex = Regex::new(r"\.+").unwrap();
-
     let lines: Vec<(Vec<State>, Vec<usize>)> = input.lines().map(|line| {
         let (first_part, second_part) = line.split(' ').tuples().next().unwrap();
-        let first_part_normalized = dot_regex.replace_all(first_part, ".").into_owned();
-        let first_part_normalized_2 = first_part_normalized.trim_start_matches('.');
-        let first_part_normalized_3 = if !first_part_normalized_2.ends_with('.') { format!("{}.", first_part_normalized_2) } else { first_part_normalized_2.into() };
-        let sequence: Vec<State> = first_part_normalized_3.chars().map(State::from).collect();
+        let sequence: Vec<State> = first_part.chars().map(State::from).collect();
         let checksums: Vec<usize> = second_part.split(',').map(|c| c.parse::<usize>().unwrap()).collect();
         (sequence, checksums)
     }).collect();
 
-    let result: usize = lines.iter().map(|(seq, checksums)| calc(seq, checksums)).sum();
+    let result: usize = lines.par_iter().map(|(seq, checksums)| calc(seq, 0, checksums, 0)).sum();
 
     Some(result)
 }
 
 fn unfold_sequence(states: &Vec<State>) -> Vec<State> {
-    states.iter().chain(iter::once(&State::Unknown)).cloned().cycle().take((states.len() + 1) * 2 - 1).collect()
+    states.iter().chain(iter::once(&State::Unknown)).cloned().cycle().take((states.len() + 1) * 5 - 1).collect()
 }
 
 fn unfold_checksum(checksum: &Vec<usize>) -> Vec<usize> {
-    checksum.iter().cloned().cycle().take(checksum.len() * 2).collect()
+    checksum.iter().cloned().cycle().take(checksum.len() * 5).collect()
 }
 
 pub fn part_two(input: &str) -> Option<usize> {
-    let sequences: Vec<(Vec<State>, Vec<usize>)> = input.lines().map(|line| {
+    let sequences = input.lines().map(|line| {
         let (first_part, second_part) = line.split(' ').tuples().next().unwrap();
         let init_seq: Vec<State> = first_part.chars().map(State::from).collect();
         let exp_seq: Vec<State> = unfold_sequence(&init_seq);
         let init_checksum: Vec<usize> = second_part.split(',').map(|c| c.parse::<usize>().unwrap()).collect();
         let exp_checksum: Vec<usize> = unfold_checksum(&init_checksum);
         (exp_seq, exp_checksum)
-    }).collect();
+    });
 
-    None
+    let result: usize = sequences.par_bridge().map(|(seq, checksums)| calc(&seq, 0, &checksums, 0)).sum();
+
+    Some(result)
 }
 
 #[cfg(test)]
@@ -188,7 +109,7 @@ mod tests {
     #[test]
     fn test_part_one() {
         let result = part_one(&advent_of_code::template::read_file("examples", DAY));
-        assert_eq!(result, Some(4));
+        assert_eq!(result, Some(21));
     }
 
     #[test]
