@@ -1,16 +1,18 @@
+use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 use itertools::Itertools;
 use rayon::prelude::{*};
 advent_of_code::solution!(14);
 
-#[derive(Debug, Eq, PartialEq, Copy, Clone)]
+#[derive(Debug, Eq, PartialEq, Copy, Clone, Hash)]
 enum Item {
     Dish,
     Rock,
     None,
 }
 
-#[derive(Debug, Eq, PartialEq, Copy, Clone)]
+#[derive(Debug, Eq, PartialEq, Copy, Clone, Hash)]
 enum Direction {
     North,
     East,
@@ -81,21 +83,7 @@ pub fn part_one(input: &str) -> Option<usize> {
     Some(result)
 }
 
-fn tilt_map(map: &mut HashMap<(usize, usize), Item>, width: usize, height: usize, dir: Direction) {
-    let mut lists: HashMap<usize, HashMap<usize, Item>> = match dir {
-        Direction::North | Direction::South => (0..width).map(|i| (i, map.iter().filter(|x| x.0.1 == i).map(|x| (x.0.0, *x.1)).collect())).collect(),
-        Direction::West | Direction::East => (0..height).map(|i| (i, map.iter().filter(|x| x.0.0 == i).map(|x| (x.0.0, *x.1)).collect())).collect(),
-    };
-
-    let full_length = match dir {
-        Direction::North | Direction::South => height,
-        Direction::West | Direction::East => width,
-    };
-
-    lists.iter_mut().for_each(|(_, list)| tilt_list(list, full_length, dir));
-}
-
-fn tilt_list(list: &mut HashMap<usize, Item>, full_length: usize, dir: Direction) {
+fn mutate_list(list: &mut HashMap<usize, Item>, full_length: usize, dir: Direction) {
     let x_range = match dir {
         Direction::North | Direction::West => itertools::Either::Left(1..full_length),
         Direction::South | Direction::East => itertools::Either::Right((0..full_length - 2).rev()),
@@ -176,11 +164,56 @@ fn to_cols(rows: &HashMap<usize, HashMap<usize, Item>>, width: usize) -> HashMap
     cols
 }
 
-fn cycle(map: &mut HashMap<(usize, usize), Item>, width: usize, height: usize) {
-    tilt_map(map, width, height, Direction::North);
-    tilt_map(map, width, height, Direction::West);
-    tilt_map(map, width, height, Direction::South);
-    tilt_map(map, width, height, Direction::East);
+fn get_hash(cols: &HashMap<usize, HashMap<usize, Item>>) -> u64 {
+    let flat_cols: Vec<&Item> = cols.iter().sorted_by_key(|x| x.0).flat_map(|x| x.1.iter().sorted_by_key(|x| x.0).map(|x| x.1).collect::<Vec<&Item>>()).collect();
+    let mut hasher = DefaultHasher::new();
+    flat_cols.hash(&mut hasher);
+    hasher.finish()
+}
+
+fn cycle(init_cols: HashMap<usize, HashMap<usize, Item>>, width: usize, height: usize, cache: &mut HashMap<u64, HashMap<usize, HashMap<usize, Item>>>) -> HashMap<usize, HashMap<usize, Item>> {
+    let init_cols_hash = get_hash(&init_cols);
+
+    if let Some(cached_result) = cache.get(&init_cols_hash) {
+        return cached_result.clone();
+    }
+
+    // cols
+    let mut list = init_cols;
+
+    // tilt cols north
+    list.iter_mut().for_each(|(_, col)| {
+        mutate_list(col, height, Direction::North);
+    });
+
+    // rows
+    list = to_rows(&list, height);
+
+    // tilt rows west
+    list.iter_mut().for_each(|(_, row)| {
+        mutate_list(row, width, Direction::West);
+    });
+
+    // cols
+    list = to_cols(&list, width);
+
+    // tilt cols south
+    list.iter_mut().for_each(|(_, col)| {
+        mutate_list(col, height, Direction::South);
+    });
+
+    // rows
+    list = to_rows(&list, height);
+
+    // tilt rows east
+    list.iter_mut().for_each(|(_, row)| {
+        mutate_list(row, width, Direction::East);
+    });
+
+    // cols
+    let result = to_cols(&list, width);
+    cache.insert(init_cols_hash, result.clone());
+    result
 }
 
 pub fn part_two(input: &str) -> Option<usize> {
@@ -193,19 +226,20 @@ pub fn part_two(input: &str) -> Option<usize> {
         }).collect::<Vec<((usize, usize), Item)>>()
     }).collect();
 
-    // let init_cols: HashMap<usize, HashMap<usize, Item>> = (0..width).map(|y| (y, map.iter().filter(|x| x.0.1 == y).map(|x| (x.0.0, *x.1)).collect())).collect();
+    let init_cols: HashMap<usize, HashMap<usize, Item>> = (0..width).map(|y| (y, map.iter().filter(|x| x.0.1 == y).map(|x| (x.0.0, *x.1)).collect())).collect();
 
-    let mut curr_map = map;
+    let mut curr_cols = init_cols;
+    let mut cache = HashMap::new();
 
-    for _ in 0..1 {
-        cycle(&mut curr_map, width, height);
+    for _ in 0..100_000 {
+        curr_cols = cycle(curr_cols, width, height, &mut cache);
     }
 
-    dbg!(&curr_map);
+    dbg!(&curr_cols);
 
-    // let result = curr_cols.values().map(|result_col| calc_2(result_col, height)).sum();
+    let result = curr_cols.values().map(|result_col| calc_2(result_col, height)).sum();
 
-    Some(0)
+    Some(result)
 }
 
 #[cfg(test)]
