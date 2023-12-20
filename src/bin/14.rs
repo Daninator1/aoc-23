@@ -81,7 +81,21 @@ pub fn part_one(input: &str) -> Option<usize> {
     Some(result)
 }
 
-fn mutate_list(list: &mut HashMap<usize, Item>, full_length: usize, dir: Direction) {
+fn tilt_map(map: &mut HashMap<(usize, usize), Item>, width: usize, height: usize, dir: Direction) {
+    let mut lists: HashMap<usize, HashMap<usize, Item>> = match dir {
+        Direction::North | Direction::South => (0..width).map(|i| (i, map.iter().filter(|x| x.0.1 == i).map(|x| (x.0.0, *x.1)).collect())).collect(),
+        Direction::West | Direction::East => (0..height).map(|i| (i, map.iter().filter(|x| x.0.0 == i).map(|x| (x.0.0, *x.1)).collect())).collect(),
+    };
+
+    let full_length = match dir {
+        Direction::North | Direction::South => height,
+        Direction::West | Direction::East => width,
+    };
+
+    lists.iter_mut().for_each(|(_, list)| tilt_list(list, full_length, dir));
+}
+
+fn tilt_list(list: &mut HashMap<usize, Item>, full_length: usize, dir: Direction) {
     let x_range = match dir {
         Direction::North | Direction::West => itertools::Either::Left(1..full_length),
         Direction::South | Direction::East => itertools::Either::Right((0..full_length - 2).rev()),
@@ -162,41 +176,11 @@ fn to_cols(rows: &HashMap<usize, HashMap<usize, Item>>, width: usize) -> HashMap
     cols
 }
 
-fn cycle(init_cols: HashMap<usize, HashMap<usize, Item>>, width: usize, height: usize) -> HashMap<usize, HashMap<usize, Item>> {
-    // cols
-    let mut list = init_cols;
-
-    // tilt cols north
-    list.iter_mut().for_each(|(_, col)| {
-        mutate_list(col, height, Direction::North);
-    });
-
-    // rows
-    list = to_rows(&list, height);
-
-    // tilt rows west
-    list.iter_mut().for_each(|(_, row)| {
-        mutate_list(row, width, Direction::West);
-    });
-
-    // cols
-    list = to_cols(&list, width);
-
-    // tilt cols south
-    list.iter_mut().for_each(|(_, col)| {
-        mutate_list(col, height, Direction::South);
-    });
-
-    // rows
-    list = to_rows(&list, height);
-
-    // tilt rows east
-    list.iter_mut().for_each(|(_, row)| {
-        mutate_list(row, width, Direction::East);
-    });
-
-    // cols
-    to_cols(&list, width)
+fn cycle(map: &mut HashMap<(usize, usize), Item>, width: usize, height: usize) {
+    tilt_map(map, width, height, Direction::North);
+    tilt_map(map, width, height, Direction::West);
+    tilt_map(map, width, height, Direction::South);
+    tilt_map(map, width, height, Direction::East);
 }
 
 pub fn part_two(input: &str) -> Option<usize> {
@@ -209,19 +193,19 @@ pub fn part_two(input: &str) -> Option<usize> {
         }).collect::<Vec<((usize, usize), Item)>>()
     }).collect();
 
-    let init_cols: HashMap<usize, HashMap<usize, Item>> = (0..width).map(|y| (y, map.iter().filter(|x| x.0.1 == y).map(|x| (x.0.0, *x.1)).collect())).collect();
+    // let init_cols: HashMap<usize, HashMap<usize, Item>> = (0..width).map(|y| (y, map.iter().filter(|x| x.0.1 == y).map(|x| (x.0.0, *x.1)).collect())).collect();
 
-    let mut curr_cols = init_cols;
+    let mut curr_map = map;
 
-    for _ in 0..10000 {
-        curr_cols = cycle(curr_cols, width, height);
+    for _ in 0..1 {
+        cycle(&mut curr_map, width, height);
     }
 
-    dbg!(&curr_cols);
+    dbg!(&curr_map);
 
-    let result = curr_cols.values().map(|result_col| calc_2(result_col, height)).sum();
+    // let result = curr_cols.values().map(|result_col| calc_2(result_col, height)).sum();
 
-    Some(result)
+    Some(0)
 }
 
 #[cfg(test)]
