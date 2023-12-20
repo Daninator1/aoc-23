@@ -1,6 +1,5 @@
-use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
-use std::hash::{Hash, Hasher};
+use std::fmt::{Display, Formatter};
 use itertools::Itertools;
 use rayon::prelude::{*};
 advent_of_code::solution!(14);
@@ -10,6 +9,16 @@ enum Item {
     Dish,
     Rock,
     None,
+}
+
+impl Display for Item {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", match self {
+            Item::Dish => 'O',
+            Item::Rock => '#',
+            Item::None => '.',
+        })
+    }
 }
 
 #[derive(Debug, Eq, PartialEq, Copy, Clone, Hash)]
@@ -83,14 +92,14 @@ pub fn part_one(input: &str) -> Option<usize> {
     Some(result)
 }
 
-fn mutate_list(list: &mut HashMap<usize, Item>, full_length: usize, dir: Direction) {
+fn mutate_list(list: &mut [Item], full_length: usize, dir: Direction) {
     let x_range = match dir {
         Direction::North | Direction::West => itertools::Either::Left(1..full_length),
-        Direction::South | Direction::East => itertools::Either::Right((0..full_length - 2).rev()),
+        Direction::South | Direction::East => itertools::Either::Right((0..full_length - 1).rev()),
     };
 
     for x in x_range {
-        if list.get(&x) != Some(&Item::Dish) {
+        if list[x] != Item::Dish {
             continue;
         }
 
@@ -102,7 +111,7 @@ fn mutate_list(list: &mut HashMap<usize, Item>, full_length: usize, dir: Directi
         };
 
         for other_x in other_x_range {
-            if list.get(&other_x).is_some() {
+            if list[other_x] != Item::None {
                 break;
             }
 
@@ -110,134 +119,132 @@ fn mutate_list(list: &mut HashMap<usize, Item>, full_length: usize, dir: Directi
         }
 
         if new_x != x {
-            list.remove(&x);
-            list.insert(new_x, Item::Dish);
+            list[x] = Item::None;
+            list[new_x] = Item::Dish;
         }
     }
 }
 
-fn calc_2(list: &HashMap<usize, Item>, full_length: usize) -> usize {
+fn calc_2(list: &[Item]) -> usize {
     let mut result = 0;
 
-    for x in 0..full_length {
-        if list.get(&x) == Some(&Item::Dish) {
-            result += full_length - x;
+    list.iter().enumerate().for_each(|(i, x)| {
+        if x == &Item::Dish {
+            result += list.len() - i;
         }
-    }
+    });
 
     result
 }
 
-fn to_rows(cols: &HashMap<usize, HashMap<usize, Item>>, height: usize) -> HashMap<usize, HashMap<usize, Item>> {
-    let mut rows: HashMap<usize, HashMap<usize, Item>> = HashMap::new();
+// #[cached]
+fn to_rows(cols: Vec<Vec<Item>>, height: usize) -> Vec<Vec<Item>> {
+    let mut rows: Vec<Vec<Item>> = Vec::new();
 
     for x in 0..height {
-        let mut row: HashMap<usize, Item> = HashMap::new();
-
-        for y in 0..cols.len() {
-            if let Some(i) = cols[&y].get(&x) {
-                row.insert(y, *i);
-            }
-        }
-
-        rows.insert(x, row);
+        let row: Vec<Item> = cols.iter().map(|col| col[x]).collect();
+        rows.push(row);
     }
 
     rows
 }
 
-fn to_cols(rows: &HashMap<usize, HashMap<usize, Item>>, width: usize) -> HashMap<usize, HashMap<usize, Item>> {
-    let mut cols: HashMap<usize, HashMap<usize, Item>> = HashMap::new();
+// #[cached]
+fn to_cols(rows: Vec<Vec<Item>>, width: usize) -> Vec<Vec<Item>> {
+    let mut cols: Vec<Vec<Item>> = Vec::new();
 
     for y in 0..width {
-        let mut col: HashMap<usize, Item> = HashMap::new();
-
-        for x in 0..rows.len() {
-            if let Some(i) = rows[&x].get(&y) {
-                col.insert(x, *i);
-            }
-        }
-
-        cols.insert(y, col);
+        let col: Vec<Item> = rows.iter().map(|row| row[y]).collect();
+        cols.push(col);
     }
 
     cols
 }
 
-fn get_hash(cols: &HashMap<usize, HashMap<usize, Item>>) -> u64 {
-    let flat_cols: Vec<&Item> = cols.iter().sorted_by_key(|x| x.0).flat_map(|x| x.1.iter().sorted_by_key(|x| x.0).map(|x| x.1).collect::<Vec<&Item>>()).collect();
-    let mut hasher = DefaultHasher::new();
-    flat_cols.hash(&mut hasher);
-    hasher.finish()
-}
-
-fn cycle(init_cols: HashMap<usize, HashMap<usize, Item>>, width: usize, height: usize, cache: &mut HashMap<u64, HashMap<usize, HashMap<usize, Item>>>) -> HashMap<usize, HashMap<usize, Item>> {
-    let init_cols_hash = get_hash(&init_cols);
-
-    if let Some(cached_result) = cache.get(&init_cols_hash) {
-        return cached_result.clone();
-    }
-
+// #[cached]
+fn cycle(init_cols: Vec<Vec<Item>>, width: usize, height: usize) -> Vec<Vec<Item>> {
     // cols
     let mut list = init_cols;
 
     // tilt cols north
-    list.iter_mut().for_each(|(_, col)| {
+    list.iter_mut().for_each(|col| {
         mutate_list(col, height, Direction::North);
     });
 
     // rows
-    list = to_rows(&list, height);
+    list = to_rows(list, height);
 
     // tilt rows west
-    list.iter_mut().for_each(|(_, row)| {
+    list.iter_mut().for_each(|row| {
         mutate_list(row, width, Direction::West);
     });
 
     // cols
-    list = to_cols(&list, width);
+    list = to_cols(list, width);
 
     // tilt cols south
-    list.iter_mut().for_each(|(_, col)| {
+    list.iter_mut().for_each(|col| {
         mutate_list(col, height, Direction::South);
     });
 
     // rows
-    list = to_rows(&list, height);
+    list = to_rows(list, height);
 
     // tilt rows east
-    list.iter_mut().for_each(|(_, row)| {
+    list.iter_mut().for_each(|row| {
         mutate_list(row, width, Direction::East);
     });
 
     // cols
-    let result = to_cols(&list, width);
-    cache.insert(init_cols_hash, result.clone());
-    result
+    to_cols(list, width)
 }
 
 pub fn part_two(input: &str) -> Option<usize> {
     let width = input.lines().next().unwrap().len();
     let height = input.lines().count();
 
-    let map: HashMap<(usize, usize), Item> = input.lines().enumerate().flat_map(|(row_idx, line)| {
-        line.chars().map(Item::from).enumerate().filter(|i| i.1 != Item::None).map(|(col_idx, i)| {
-            ((row_idx, col_idx), i)
-        }).collect::<Vec<((usize, usize), Item)>>()
+    let map: Vec<(usize, usize, Item)> = input.lines().enumerate().flat_map(|(row_idx, line)| {
+        line.chars().map(Item::from).enumerate().map(|(col_idx, i)| {
+            (row_idx, col_idx, i)
+        }).collect::<Vec<(usize, usize, Item)>>()
     }).collect();
 
-    let init_cols: HashMap<usize, HashMap<usize, Item>> = (0..width).map(|y| (y, map.iter().filter(|x| x.0.1 == y).map(|x| (x.0.0, *x.1)).collect())).collect();
+    let init_cols: Vec<Vec<Item>> = (0..width).map(|y| map.iter().filter(|x| x.1 == y).map(|x| x.2).collect()).collect();
 
     let mut curr_cols = init_cols;
-    let mut cache = HashMap::new();
 
-    for _ in 0..100_000 {
-        curr_cols = cycle(curr_cols, width, height, &mut cache);
+    let mut cache: Vec<Vec<Vec<Item>>> = Vec::new();
+
+    let target: usize = 1000000000;
+
+    let mut cycle_offset: usize = 0;
+
+    for i in 0..target {
+        curr_cols = cycle(curr_cols, width, height);
+
+        // println!("Iteration: {}", i + 1);
+        // to_rows(curr_cols.clone(), height).iter().for_each(|row| {
+        //     row.iter().for_each(|i| print!("{}", i));
+        //     println!();
+        // });
+        // println!();
+
+        if let Some((cache_idx, _)) = cache.iter().find_position(|c| c == &&curr_cols) {
+            cycle_offset = (target - 1 - i) % (i - cache_idx);
+            println!("iteration {} is same as iteration {} (offset {})", cache_idx, i, &cycle_offset);
+            break;
+        }
+
+        cache.push(curr_cols.clone());
     }
 
-    dbg!(&curr_cols);
+    if cycle_offset != 0 {
+        for _ in 0..cycle_offset {
+            curr_cols = cycle(curr_cols, width, height);
+        }
+    }
 
-    let result = curr_cols.values().map(|result_col| calc_2(result_col, height)).sum();
+    let result = curr_cols.iter().map(|result_col| calc_2(result_col)).sum();
 
     Some(result)
 }
