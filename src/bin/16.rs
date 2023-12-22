@@ -1,4 +1,5 @@
 use std::str::FromStr;
+use rayon::prelude::{*};
 advent_of_code::solution!(16);
 
 #[derive(Debug)]
@@ -92,7 +93,7 @@ impl Position {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 struct Ball {
     direction: Direction,
     position: Position,
@@ -135,18 +136,12 @@ impl FromStr for Map {
     }
 }
 
-pub fn part_one(input: &str) -> Option<usize> {
-    let map = Map::from_str(input).unwrap();
-
-    let mut balls = vec!(Ball {
-        position: Position { x: 0, y: 0 },
-        direction: Direction::Right,
-    });
-
-    let mut history: Vec<(Position, Direction)> = vec!((Position { x: 0, y: 0 }, Direction::Right));
+fn calc(ball: &Ball, map: &Map) -> usize {
+    let mut history: Vec<(Position, Direction)> = vec!((ball.position, ball.direction));
+    let mut balls: Vec<Ball> = vec!(*ball);
 
     loop {
-        let iteration_results: Vec<Ball> = balls.iter().flat_map(|ball| ball.advance(&map, &history)).collect();
+        let iteration_results: Vec<Ball> = balls.par_iter().flat_map(|ball| ball.advance(map, &history)).collect();
 
         iteration_results.iter().for_each(|b| {
             if !history.iter().any(|(p, _)| p == &b.position) {
@@ -161,13 +156,34 @@ pub fn part_one(input: &str) -> Option<usize> {
         balls = iteration_results;
     }
 
-    let result = history.len();
+    history.len()
+}
+
+pub fn part_one(input: &str) -> Option<usize> {
+    let map = Map::from_str(input).unwrap();
+
+    let ball = Ball {
+        position: Position { x: 0, y: 0 },
+        direction: Direction::Right,
+    };
+
+    let result = calc(&ball, &map);
 
     Some(result)
 }
 
-pub fn part_two(input: &str) -> Option<u32> {
-    None
+pub fn part_two(input: &str) -> Option<usize> {
+    let map = Map::from_str(input).unwrap();
+
+    let balls: Vec<Ball> = (0..map.width).map(|x| Ball { position: Position { x, y: 0 }, direction: Direction::Down })
+        .chain((0..map.width).map(|x| Ball { position: Position { x, y: map.height - 1 }, direction: Direction::Up }))
+        .chain((0..map.height).map(|y| Ball { position: Position { x: 0, y }, direction: Direction::Right }))
+        .chain((0..map.height).map(|y| Ball { position: Position { x: map.width - 1, y }, direction: Direction::Left }))
+        .collect();
+
+    let result = balls.par_iter().map(|ball| calc(ball, &map)).max().unwrap();
+
+    Some(result)
 }
 
 #[cfg(test)]
@@ -183,6 +199,6 @@ mod tests {
     #[test]
     fn test_part_two() {
         let result = part_two(&advent_of_code::template::read_file("examples", DAY));
-        assert_eq!(result, None);
+        assert_eq!(result, Some(51));
     }
 }
