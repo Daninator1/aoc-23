@@ -133,7 +133,7 @@ impl FromStr for Map {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let grid = s.lines().map(|line| line.chars().map(Tile::from).collect()).collect();
-        Ok(Map { grid, width: s.lines().count(), height: s.lines().next().unwrap().chars().count() })
+        Ok(Map { grid, width: s.lines().next().unwrap().chars().count(), height: s.lines().count() })
     }
 }
 
