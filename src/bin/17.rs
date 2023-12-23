@@ -46,6 +46,9 @@ fn calc_rec(map: &Map, current: (Position, Direction), finish: &Position, straig
 
     get_next_positions(current, straight_count, map, history).iter().flat_map(|(position, direction, straight_count)| {
         calc_rec(map, (*position, *direction), finish, *straight_count, &new_history)
+            .iter()
+            .map(|x| map.grid[current.0.y][current.0.x] + *x)
+            .collect::<Vec<usize>>()
     }).collect()
 }
 
