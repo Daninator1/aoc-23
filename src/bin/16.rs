@@ -1,4 +1,5 @@
 use std::str::FromStr;
+use itertools::Itertools;
 use rayon::prelude::{*};
 advent_of_code::solution!(16);
 
@@ -144,9 +145,7 @@ fn calc(ball: &Ball, map: &Map) -> usize {
         let iteration_results: Vec<Ball> = balls.par_iter().flat_map(|ball| ball.advance(map, &history)).collect();
 
         iteration_results.iter().for_each(|b| {
-            if !history.iter().any(|(p, _)| p == &b.position) {
-                history.push((b.position, b.direction));
-            }
+            history.push((b.position, b.direction));
         });
 
         if iteration_results.is_empty() {
@@ -156,7 +155,7 @@ fn calc(ball: &Ball, map: &Map) -> usize {
         balls = iteration_results;
     }
 
-    history.len()
+    history.iter().map(|h| h.0).unique().count()
 }
 
 pub fn part_one(input: &str) -> Option<usize> {
