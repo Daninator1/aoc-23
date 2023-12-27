@@ -1,25 +1,48 @@
 use std::collections::HashMap;
 use std::str::FromStr;
 use itertools::Itertools;
+use rayon::prelude::{*};
 advent_of_code::solution!(18);
 
 #[derive(Debug)]
 struct Instruction {
     direction: Direction,
     amount: usize,
-    color: String,
 }
 
 impl FromStr for Instruction {
     type Err = ();
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let (direction_str, amount_str, color_str) = s.split(' ').tuples().next().unwrap();
+        let (direction_str, amount_str) = s.split(' ').tuples().next().unwrap();
         Ok(Instruction {
             direction: Direction::from(direction_str.chars().next().unwrap()),
             amount: amount_str.parse().unwrap(),
-            color: color_str.into(),
         })
+    }
+}
+
+#[derive(Debug)]
+struct ExtendedInstruction {
+    direction: Direction,
+    amount: usize,
+}
+
+impl ExtendedInstruction {
+    fn to_instruction(&self) -> Instruction {
+        Instruction { direction: self.direction, amount: self.amount }
+    }
+}
+
+impl FromStr for ExtendedInstruction {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let hex_str = s.split(' ').last().unwrap();
+        let raw_hex_str = hex_str.replace(['(', ')'], "");
+        let amount = usize::from_str_radix(&raw_hex_str[1..raw_hex_str.len() - 1], 16).expect("invalid hex code");
+        let direction = Direction::from(raw_hex_str.chars().last().unwrap());
+        Ok(ExtendedInstruction { direction, amount })
     }
 }
 
@@ -45,10 +68,10 @@ impl Direction {
 impl From<char> for Direction {
     fn from(value: char) -> Self {
         match value {
-            'U' => Direction::North,
-            'D' => Direction::South,
-            'L' => Direction::West,
-            'R' => Direction::East,
+            'U' | '3' => Direction::North,
+            'D' | '1' => Direction::South,
+            'L' | '2' => Direction::West,
+            'R' | '0' => Direction::East,
             _ => panic!("invalid direction")
         }
     }
@@ -103,12 +126,11 @@ fn count_inside(border: &HashMap<Position, (Direction, Direction)>) -> usize {
     let min_x = border.keys().min_by_key(|x| x.x).unwrap().x;
     let max_x = border.keys().max_by_key(|x| x.x).unwrap().x;
 
-    let mut count = 0;
-
-    for y in min_y..=max_y {
+    (min_y..=max_y).par_bridge().map(|y| {
         let mut inside = false;
+        let mut count = 0;
 
-        for x in min_x..=max_x {
+        (min_x..=max_x).for_each(|x| {
             if let Some(b) = border.get(&Position { x, y }) {
                 match b {
                     (Direction::South, _) => { inside = !inside }
@@ -118,10 +140,10 @@ fn count_inside(border: &HashMap<Position, (Direction, Direction)>) -> usize {
             } else if inside {
                 count += 1;
             }
-        }
-    }
+        });
 
-    count
+        count
+    }).sum()
 }
 
 pub fn part_one(input: &str) -> Option<usize> {
@@ -134,7 +156,12 @@ pub fn part_one(input: &str) -> Option<usize> {
 }
 
 pub fn part_two(input: &str) -> Option<usize> {
-    None
+    let instructions: Vec<Instruction> = input.lines().map(|line| ExtendedInstruction::from_str(line).unwrap().to_instruction()).collect();
+
+    let border = build_border(&instructions);
+    let inside = count_inside(&border);
+
+    Some(border.len() + inside)
 }
 
 #[cfg(test)]
