@@ -1,7 +1,5 @@
-use std::collections::HashMap;
 use std::str::FromStr;
 use itertools::Itertools;
-use rayon::prelude::{*};
 advent_of_code::solution!(18);
 
 #[derive(Debug)]
@@ -54,17 +52,6 @@ enum Direction {
     East,
 }
 
-impl Direction {
-    fn inverse(&self) -> Direction {
-        match self {
-            Direction::North => Direction::South,
-            Direction::East => Direction::West,
-            Direction::South => Direction::North,
-            Direction::West => Direction::East,
-        }
-    }
-}
-
 impl From<char> for Direction {
     fn from(value: char) -> Self {
         match value {
@@ -84,84 +71,48 @@ struct Position {
 }
 
 impl Position {
-    fn advance(&self, direction: &Direction) -> Position {
+    fn advance_amount(&self, direction: Direction, amount: usize) -> Position {
         match direction {
-            Direction::North => Position { x: self.x, y: self.y - 1 },
-            Direction::South => Position { x: self.x, y: self.y + 1 },
-            Direction::West => Position { x: self.x - 1, y: self.y },
-            Direction::East => Position { x: self.x + 1, y: self.y },
+            Direction::North => Position { x: self.x, y: self.y - amount as isize },
+            Direction::South => Position { x: self.x, y: self.y + amount as isize },
+            Direction::West => Position { x: self.x - amount as isize, y: self.y },
+            Direction::East => Position { x: self.x + amount as isize, y: self.y },
         }
     }
 }
 
-fn build_border(instructions: &[Instruction]) -> HashMap<Position, (Direction, Direction)> {
-    let mut result = HashMap::new();
+fn build_corners(instructions: &[Instruction]) -> Vec<Position> {
+    let mut curr_pos = Position { x: 0, y: 0 };
 
-    let mut last_pos = Position { x: 0, y: 0 };
-    let mut last_dir = instructions.last().unwrap().direction;
+    instructions.iter().map(|instruction| {
+        let new_pos = curr_pos.advance_amount(instruction.direction, instruction.amount);
+        curr_pos = new_pos;
+        new_pos
+    }).collect()
+}
 
-    for instruction in instructions {
-        result.insert(last_pos, (last_dir.inverse(), instruction.direction));
-        last_dir = instruction.direction;
-
-        (0..instruction.amount - 1).for_each(|i| {
-            let new_pos = last_pos.advance(&instruction.direction);
-            result.insert(new_pos, (last_dir.inverse(), instruction.direction));
-            last_pos = new_pos;
-            last_dir = instruction.direction;
-        });
-
-        let new_pos = last_pos.advance(&instruction.direction);
-        last_pos = new_pos;
-        last_dir = instruction.direction;
-    }
-
+fn count_inside_shoelace(corners: &[Position]) -> isize {
+    let mut mults: Vec<(isize, isize)> = corners.iter().tuple_windows().map(|(curr, next)| (curr.x * next.y, curr.y * next.x)).collect();
+    mults.push((corners[corners.len() - 1].x * corners[0].y, corners[corners.len() - 1].y * corners[0].x));
+    let (mults_a, mults_b): (Vec<isize>, Vec<isize>) = mults.iter().cloned().unzip();
+    let result = (mults_a.iter().sum::<isize>() - mults_b.iter().sum::<isize>()) / 2;
     result
 }
 
-fn count_inside(border: &HashMap<Position, (Direction, Direction)>) -> usize {
-    let min_y = border.keys().min_by_key(|x| x.y).unwrap().y;
-    let max_y = border.keys().max_by_key(|x| x.y).unwrap().y;
-
-    let min_x = border.keys().min_by_key(|x| x.x).unwrap().x;
-    let max_x = border.keys().max_by_key(|x| x.x).unwrap().x;
-
-    (min_y..=max_y).par_bridge().map(|y| {
-        let mut inside = false;
-        let mut count = 0;
-
-        (min_x..=max_x).for_each(|x| {
-            if let Some(b) = border.get(&Position { x, y }) {
-                match b {
-                    (Direction::South, _) => { inside = !inside }
-                    (_, Direction::South) => { inside = !inside }
-                    _ => {}
-                }
-            } else if inside {
-                count += 1;
-            }
-        });
-
-        count
-    }).sum()
-}
-
-pub fn part_one(input: &str) -> Option<usize> {
+pub fn part_one(input: &str) -> Option<isize> {
     let instructions: Vec<Instruction> = input.lines().map(|line| Instruction::from_str(line).unwrap()).collect();
-
-    let border = build_border(&instructions);
-    let inside = count_inside(&border);
-
-    Some(border.len() + inside)
+    let corners = build_corners(&instructions);
+    let inside_area = count_inside_shoelace(&corners);
+    let border_count = instructions.iter().map(|x| x.amount).sum::<usize>();
+    Some(inside_area + (border_count / 2) as isize + 1)
 }
 
-pub fn part_two(input: &str) -> Option<usize> {
+pub fn part_two(input: &str) -> Option<isize> {
     let instructions: Vec<Instruction> = input.lines().map(|line| ExtendedInstruction::from_str(line).unwrap().to_instruction()).collect();
-
-    let border = build_border(&instructions);
-    let inside = count_inside(&border);
-
-    Some(border.len() + inside)
+    let corners = build_corners(&instructions);
+    let inside_area = count_inside_shoelace(&corners);
+    let border_count = instructions.iter().map(|x| x.amount).sum::<usize>();
+    Some(inside_area + (border_count / 2) as isize + 1)
 }
 
 #[cfg(test)]
