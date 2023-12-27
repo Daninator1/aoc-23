@@ -71,19 +71,19 @@ impl Position {
     }
 }
 
-fn build_border(instructions: &[Instruction]) -> Vec<(Position, (Direction, Direction))> {
-    let mut result = vec!();
+fn build_border(instructions: &[Instruction]) -> HashMap<Position, (Direction, Direction)> {
+    let mut result = HashMap::new();
 
     let mut last_pos = Position { x: 0, y: 0 };
     let mut last_dir = instructions.last().unwrap().direction;
 
     for instruction in instructions {
-        result.push((last_pos, (last_dir.inverse(), instruction.direction)));
+        result.insert(last_pos, (last_dir.inverse(), instruction.direction));
         last_dir = instruction.direction;
 
         (0..instruction.amount - 1).for_each(|i| {
             let new_pos = last_pos.advance(&instruction.direction);
-            result.push((new_pos, (last_dir.inverse(), instruction.direction)));
+            result.insert(new_pos, (last_dir.inverse(), instruction.direction));
             last_pos = new_pos;
             last_dir = instruction.direction;
         });
@@ -96,12 +96,12 @@ fn build_border(instructions: &[Instruction]) -> Vec<(Position, (Direction, Dire
     result
 }
 
-fn count_inside(border: &[(Position, (Direction, Direction))]) -> usize {
-    let min_y = border.iter().min_by_key(|x| x.0.y).unwrap().0.y;
-    let max_y = border.iter().max_by_key(|x| x.0.y).unwrap().0.y;
+fn count_inside(border: &HashMap<Position, (Direction, Direction)>) -> usize {
+    let min_y = border.keys().min_by_key(|x| x.y).unwrap().y;
+    let max_y = border.keys().max_by_key(|x| x.y).unwrap().y;
 
-    let min_x = border.iter().min_by_key(|x| x.0.x).unwrap().0.x;
-    let max_x = border.iter().max_by_key(|x| x.0.x).unwrap().0.x;
+    let min_x = border.keys().min_by_key(|x| x.x).unwrap().x;
+    let max_x = border.keys().max_by_key(|x| x.x).unwrap().x;
 
     let mut count = 0;
 
@@ -109,8 +109,8 @@ fn count_inside(border: &[(Position, (Direction, Direction))]) -> usize {
         let mut inside = false;
 
         for x in min_x..=max_x {
-            if let Some(b) = border.iter().find(|b| b.0 == Position { x, y }) {
-                match b.1 {
+            if let Some(b) = border.get(&Position { x, y }) {
+                match b {
                     (Direction::South, _) => { inside = !inside }
                     (_, Direction::South) => { inside = !inside }
                     _ => {}
@@ -133,7 +133,7 @@ pub fn part_one(input: &str) -> Option<usize> {
     Some(border.len() + inside)
 }
 
-pub fn part_two(input: &str) -> Option<u32> {
+pub fn part_two(input: &str) -> Option<usize> {
     None
 }
 
@@ -150,6 +150,6 @@ mod tests {
     #[test]
     fn test_part_two() {
         let result = part_two(&advent_of_code::template::read_file("examples", DAY));
-        assert_eq!(result, None);
+        assert_eq!(result, Some(952408144115));
     }
 }
