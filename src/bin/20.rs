@@ -35,7 +35,7 @@ impl Module for BroadcastModule {
 
     fn process(&mut self, input: (String, Pulse)) -> Vec<(String, String, Pulse)> {
         self.outputs.iter().map(|o| {
-            println!("{:?} -{:?} -> {:?}", self.id, input.1, o);
+            // println!("{:?} -{:?} -> {:?}", self.id, input.1, o);
             (self.id().clone(), o.clone(), input.1)
         }).collect()
     }
@@ -67,11 +67,11 @@ impl Module for FlipFlopModule {
         let result = self.outputs.iter().map(|o| {
             match self.enabled {
                 true => {
-                    println!("{:?} -{:?} -> {:?}", self.id, Pulse::Low, o);
+                    // println!("{:?} -{:?} -> {:?}", self.id, Pulse::Low, o);
                     (id.clone(), o.clone(), Pulse::Low)
                 }
                 false => {
-                    println!("{:?} -{:?} -> {:?}", self.id, Pulse::High, o);
+                    // println!("{:?} -{:?} -> {:?}", self.id, Pulse::High, o);
                     (id.clone(), o.clone(), Pulse::High)
                 }
             }
@@ -107,10 +107,10 @@ impl Module for ConjunctionModule {
 
         self.outputs.iter().map(|o| {
             if self.last_pulses.iter().all(|l| l.1 == &Pulse::High) {
-                println!("{:?} -{:?} -> {:?}", self.id, Pulse::Low, o);
+                // println!("{:?} -{:?} -> {:?}", self.id, Pulse::Low, o);
                 (id.clone(), o.clone(), Pulse::Low)
             } else {
-                println!("{:?} -{:?} -> {:?}", self.id, Pulse::High, o);
+                // println!("{:?} -{:?} -> {:?}", self.id, Pulse::High, o);
                 (id.clone(), o.clone(), Pulse::High)
             }
         }).collect()
@@ -182,13 +182,83 @@ pub fn part_one(input: &str) -> Option<usize> {
         .map(|_| run(&mut modules))
         .fold((0, 0), |acc, curr| (acc.0 + curr.0, acc.1 + curr.1));
 
-    dbg!(&result);
-
     Some(result.0 * result.1)
 }
 
-pub fn part_two(input: &str) -> Option<u32> {
-    None
+fn run_2(modules: &mut HashMap<String, Box<dyn Module>>, check_id: &str) -> bool {
+    let broadcaster_module = modules.get_mut("broadcaster").unwrap();
+
+    let mut curr_result = broadcaster_module.process(("button".into(), Pulse::Low));
+
+    while !curr_result.is_empty() {
+        let mut next_results = vec!();
+
+        for (from, to, pulse) in &curr_result {
+            if from == check_id && pulse == &Pulse::High {
+                return true;
+            }
+
+            if let Some(next_module) = modules.get_mut(to) {
+                next_results.push(next_module.process((from.clone(), *pulse)));
+            }
+        }
+
+        curr_result = next_results.iter().flatten().cloned().collect();
+    }
+
+    false
+}
+
+pub fn part_two(input: &str) -> Option<usize> {
+    let all_lines = input.lines();
+
+    let mut modules: HashMap<_, _> = input.lines().map(|l| {
+        let module = create_module(l, &all_lines);
+        (module.id().clone(), module)
+    }).collect();
+
+    // dh, qd, bb, dp,
+
+    let mut dh_presses = 1;
+
+    while !run_2(&mut modules, "dh") {
+        dh_presses += 1
+    }
+
+    let mut modules: HashMap<_, _> = input.lines().map(|l| {
+        let module = create_module(l, &all_lines);
+        (module.id().clone(), module)
+    }).collect();
+
+    let mut qd_presses = 1;
+
+    while !run_2(&mut modules, "qd") {
+        qd_presses += 1
+    }
+
+    let mut modules: HashMap<_, _> = input.lines().map(|l| {
+        let module = create_module(l, &all_lines);
+        (module.id().clone(), module)
+    }).collect();
+
+    let mut bb_presses = 1;
+
+    while !run_2(&mut modules, "bb") {
+        bb_presses += 1
+    }
+
+    let mut modules: HashMap<_, _> = input.lines().map(|l| {
+        let module = create_module(l, &all_lines);
+        (module.id().clone(), module)
+    }).collect();
+
+    let mut dp_presses = 1;
+
+    while !run_2(&mut modules, "dp") {
+        dp_presses += 1
+    }
+
+    Some(dh_presses * qd_presses * bb_presses * dp_presses)
 }
 
 #[cfg(test)]
