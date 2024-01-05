@@ -55,12 +55,17 @@ fn fall(bricks: &[Brick]) -> Vec<Brick> {
         let mut updated_z = brick.from.z;
 
         while updated_z > 1 {
-            if let Some(other) = fallen_bricks.iter().find(|b| b.to.z == updated_z - 1) {
+            let mut intersection = false;
+
+            for other in fallen_bricks.iter().filter(|b| b.to.z == updated_z - 1) {
                 if intersects((brick.from.x, brick.to.x), (other.from.x, other.to.x)) &&
                     intersects((brick.from.y, brick.to.y), (other.from.y, other.to.y)) {
+                    intersection = true;
                     break;
                 }
             }
+
+            if intersection { break; }
 
             updated_z -= 1;
         }
