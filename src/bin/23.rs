@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::str::FromStr;
 use pathfinding::matrix::{directions, Matrix};
 use rayon::prelude::{*};
@@ -55,7 +56,56 @@ struct State {
     direction: (isize, isize),
     distance: usize,
     tile: Tile,
-    visited_positions: Vec<(usize, usize)>,
+}
+
+type Position = (usize, usize);
+
+#[derive(Debug, Eq, PartialEq, Clone)]
+struct Node {
+    position: Position,
+    to: Vec<(Position, usize)>,
+}
+
+fn build_structure(map: &Map, start: State, finish_pos: (usize, usize), cache: &mut Vec<Position>) -> Vec<Node> {
+    let mut result = vec!();
+
+    let mut current_state = start;
+    let mut current_weight = 1;
+
+    let mut next_states = vec!();
+
+    loop {
+        if cache.contains(&current_state.position) {
+            return result;
+        }
+
+        if current_state.position == finish_pos {
+            return result;
+        }
+
+        next_states = get_next_states(&current_state, map);
+
+        if next_states.len() > 1 {
+            // junction
+            let junction_node = Node { position: current_state.position, to: next_states.iter().map(|x| (x.position, current_weight)).collect() };
+            cache.push(junction_node.position);
+            result.push(junction_node);
+            current_weight = 1;
+            break;
+        } else {
+            // go on
+            current_weight += 1;
+            current_state = next_states[0].clone();
+        }
+    }
+
+    let other_nodes = next_states.into_iter().flat_map(|next_state| build_structure(map, next_state, finish_pos, cache));
+
+    for other_node in other_nodes {
+        result.push(other_node);
+    }
+
+    result
 }
 
 fn calc(map: Map, start: State, finish_pos: (usize, usize)) -> usize {
@@ -97,10 +147,6 @@ fn get_next_states(state: &State, map: &Map) -> Vec<State> {
             let is_direction_inverse = state.direction.0 == -direction.0 && state.direction.1 == -direction.1;
             !is_direction_inverse
         })
-        .filter(|(position, _, _)| {
-            // do not allow directions that would hit an already visited tile
-            !state.visited_positions.contains(position)
-        })
         .filter(|(_, _, tile)| {
             // do not allow directions that would hit a forest or inverting slope
             match tile {
@@ -111,14 +157,14 @@ fn get_next_states(state: &State, map: &Map) -> Vec<State> {
         })
         .map(|(position, direction, tile)| {
             // return successors
-            State { position, direction, distance: state.distance + 1, tile, visited_positions: state.visited_positions.clone().into_iter().chain(vec!(position)).collect() }
+            State { position, direction, distance: state.distance + 1, tile }
         })
         .collect::<Vec<_>>()
 }
 
 pub fn part_one(input: &str) -> Option<usize> {
     let map = Map::create_part_1(input);
-    let start = State { position: (0, 1), direction: (1, 0), distance: 0, tile: Tile::Path, visited_positions: vec!() };
+    let start = State { position: (0, 1), direction: (1, 0), distance: 0, tile: Tile::Path };
     let finish_pos = (map.grid.rows - 1, map.grid.columns - 2);
     let result = calc(map, start, finish_pos);
     Some(result)
@@ -126,10 +172,16 @@ pub fn part_one(input: &str) -> Option<usize> {
 
 pub fn part_two(input: &str) -> Option<usize> {
     let map = Map::create_part_2(input);
-    let start = State { position: (0, 1), direction: (1, 0), distance: 0, tile: Tile::Path, visited_positions: vec!() };
+    let start = State { position: (0, 1), direction: (1, 0), distance: 0, tile: Tile::Path };
     let finish_pos = (map.grid.rows - 1, map.grid.columns - 2);
-    let result = calc(map, start, finish_pos);
-    Some(result)
+
+
+
+    let sers = build_structure(&map, start, finish_pos, &mut vec!());
+
+    dbg!(&sers);
+
+    Some(1337)
 }
 
 #[cfg(test)]
