@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::str::FromStr;
 use pathfinding::matrix::{directions, Matrix};
 use rayon::prelude::{*};
 advent_of_code::solution!(23);
@@ -66,65 +65,6 @@ struct Node {
     to: Vec<(Position, usize)>,
 }
 
-fn find_next_junctions(map: &Map, junction: State, finish_pos: (usize, usize)) -> Vec<(State, usize)> {
-    let mut result = vec!();
-
-    let next_states = get_next_states(&junction, map);
-
-    for way in next_states {
-        if way.position == finish_pos {
-            result.push((way.clone(), 1));
-            break;
-        }
-        let mut next_states = get_next_states(&way, map);
-        if next_states.is_empty() { continue; }
-        let mut current_weight = 1;
-        let mut base = next_states[0].clone();
-
-        while next_states.len() == 1 {
-            base = next_states[0].clone();
-            if base.position == finish_pos {
-                result.push((base.clone(), current_weight));
-                break;
-            }
-            next_states = get_next_states(&base, map);
-            current_weight += 1;
-        }
-
-        if next_states.len() > 1 {
-            result.push((base.clone(), current_weight));
-        }
-    }
-
-    result
-}
-
-fn build_structure(map: &Map, state: State, finish_pos: (usize, usize), cache: &mut Vec<Position>) -> Vec<Node> {
-    if cache.contains(&state.position) {
-        return vec!();
-    }
-
-    if state.position == finish_pos {
-        return vec!(Node { position: state.position, to: vec!() });
-    }
-
-    cache.push(state.position);
-
-    let mut result = vec!();
-
-    let junctions = find_next_junctions(map, state.clone(), finish_pos);
-
-    result.push(Node { position: state.position, to: junctions.iter().map(|x| (x.0.position, x.1)).collect() });
-
-    for junction in junctions {
-        for next_junction in build_structure(map, junction.0, finish_pos, cache) {
-            result.push(next_junction);
-        }
-    }
-
-    result
-}
-
 fn calc(map: Map, start: State, finish_pos: (usize, usize)) -> usize {
     let mut current_states = vec!(start);
     let mut finished_states = vec!();
@@ -187,39 +127,113 @@ pub fn part_one(input: &str) -> Option<usize> {
     Some(result)
 }
 
-fn find_longest(position: Position, structure: &HashMap<Position, Node>, current_weight: usize, visited: &mut Vec<Position>) -> Vec<usize> {
-    let node = structure.get(&position).unwrap();
+pub fn part_two(input: &str) -> Option<usize> {
+    let map = Map::create_part_2(input);
+    let structure: HashMap<Position, Node> = get_structure(&map);
+    let result: Vec<_> = find_longest(&map, (0, 1), &structure, 0, vec!());
+    Some(*result.iter().max().unwrap() + 1)
+}
 
-    // finish
-    if node.to.is_empty() {
-        return vec!(current_weight);
+fn get_structure(map: &Map) -> HashMap<Position, Node> {
+    let mut paths = vec!();
+
+    for row in 0..map.grid.rows {
+        for col in 0..map.grid.columns {
+            if map.grid.get((row, col)).unwrap() == &Tile::Path { paths.push((row, col)); }
+        }
     }
 
-    visited.push(position);
+    let junctions = paths.iter().filter(|p| get_next_states_2(**p, 0, None, map).len() > 2);
 
+    let mut result: HashMap<Position, Node> = junctions.map(|j| {
+        let next_junctions = find_next_junctions(map, *j, (0, 1), (map.grid.rows - 1, map.grid.columns - 2));
+        (*j, Node { position: *j, to: next_junctions.iter().map(|j| (j.0.position, j.1)).collect() })
+    }).collect();
+
+    result.insert((0, 1), Node { position: (0, 1), to: find_next_junctions(map, (0, 1), (0, 1), (map.grid.rows - 1, map.grid.columns - 2)).iter().map(|j| (j.0.position, j.1)).collect() });
+    result.insert((map.grid.rows - 1, map.grid.columns - 2), Node { position: (map.grid.rows - 1, map.grid.columns - 2), to: find_next_junctions(map, (map.grid.rows - 1, map.grid.columns - 2), (0, 1), (map.grid.rows - 1, map.grid.columns - 2)).iter().map(|j| (j.0.position, j.1)).collect() });
+
+    result
+}
+
+fn get_next_states_2(position: Position, distance: usize, starting_direction: Option<(isize, isize)>, map: &Map) -> Vec<State> {
+    [directions::N, directions::E, directions::S, directions::W]
+        .iter()
+        .flat_map(|direction| {
+            // get all neighboring points within the grid
+            map.grid.move_in_direction(position, *direction)
+                .map(|position| (position, *direction, *map.grid.get(position).expect("tile at position must exist")))
+        })
+        .filter(|(_, direction, _)| {
+            // do not allow directions that would backtrack
+            match starting_direction {
+                Some(dir) => !(dir.0 == -direction.0 && dir.1 == -direction.1),
+                None => true,
+            }
+        })
+        .filter(|(_, _, tile)| {
+            // only allow directions that lead to a path
+            matches!(tile, Tile::Path)
+        })
+        .map(|(position, direction, tile)| {
+            // return successors
+            State { position, direction, distance: distance + 1, tile }
+        })
+        .collect::<Vec<_>>()
+}
+
+fn find_next_junctions(map: &Map, junction: Position, start_pos: (usize, usize), finish_pos: (usize, usize)) -> Vec<(State, usize)> {
     let mut result = vec!();
 
-    for to in &node.to {
-        if !visited.contains(&to.0) {
-            for x in find_longest(to.0, structure, current_weight + to.1, visited) {
-                result.push(x);
+    let next_states = get_next_states_2(junction, 0, None, map);
+
+    for way in next_states {
+        if way.position == finish_pos || way.position == start_pos {
+            result.push((way.clone(), 1));
+            continue;
+        }
+        let mut next_states = get_next_states(&way, map);
+        if next_states.is_empty() { continue; }
+        let mut current_weight = 1;
+        let mut base = next_states[0].clone();
+
+        while next_states.len() == 1 {
+            base = next_states[0].clone();
+            if base.position == finish_pos || base.position == start_pos {
+                result.push((base.clone(), current_weight));
+                break;
             }
+            next_states = get_next_states(&base, map);
+            current_weight += 1;
+        }
+
+        if next_states.len() > 1 {
+            result.push((base.clone(), current_weight));
         }
     }
 
     result
 }
 
-pub fn part_two(input: &str) -> Option<usize> {
-    let map = Map::create_part_2(input);
-    let start = State { position: (0, 1), direction: (1, 0), distance: 0, tile: Tile::Path };
-    let finish_pos = (map.grid.rows - 1, map.grid.columns - 2);
+fn find_longest(map: &Map, position: Position, structure: &HashMap<Position, Node>, current_weight: usize, visited: Vec<Position>) -> Vec<usize> {
+    let node = structure.get(&position).unwrap();
 
-    let structure: HashMap<Position, Node> = build_structure(&map, start, finish_pos, &mut vec!()).iter().map(|x| (x.position, x.clone())).collect();
+    // finish
+    if node.position == (map.grid.rows - 1, map.grid.columns - 2) {
+        return vec!(current_weight);
+    }
 
-    dbg!(&structure);
+    let mut result = vec!();
 
-    Some(*find_longest((0, 1), &structure, 0, &mut vec!()).iter().max().unwrap())
+    for to in &node.to {
+        if !visited.contains(&to.0) {
+            for x in find_longest(map, to.0, structure, current_weight + to.1, [visited.as_slice(), vec!(position).as_slice()].concat()) {
+                result.push(x);
+            }
+        }
+    }
+
+    result
 }
 
 #[cfg(test)]
