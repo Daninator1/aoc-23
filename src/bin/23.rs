@@ -66,43 +66,60 @@ struct Node {
     to: Vec<(Position, usize)>,
 }
 
-fn build_structure(map: &Map, start: State, finish_pos: (usize, usize), cache: &mut Vec<Position>) -> Vec<Node> {
+fn find_next_junctions(map: &Map, junction: State, finish_pos: (usize, usize)) -> Vec<(State, usize)> {
     let mut result = vec!();
 
-    let mut current_state = start;
-    let mut current_weight = 1;
+    let next_states = get_next_states(&junction, map);
 
-    let mut next_states = vec!();
-
-    loop {
-        if cache.contains(&current_state.position) {
-            return result;
+    for way in next_states {
+        if way.position == finish_pos {
+            result.push((way.clone(), 1));
+            break;
         }
+        let mut next_states = get_next_states(&way, map);
+        if next_states.is_empty() { continue; }
+        let mut current_weight = 1;
+        let mut base = next_states[0].clone();
 
-        if current_state.position == finish_pos {
-            return result;
+        while next_states.len() == 1 {
+            base = next_states[0].clone();
+            if base.position == finish_pos {
+                result.push((base.clone(), current_weight));
+                break;
+            }
+            next_states = get_next_states(&base, map);
+            current_weight += 1;
         }
-
-        next_states = get_next_states(&current_state, map);
 
         if next_states.len() > 1 {
-            // junction
-            let junction_node = Node { position: current_state.position, to: next_states.iter().map(|x| (x.position, current_weight)).collect() };
-            cache.push(junction_node.position);
-            result.push(junction_node);
-            current_weight = 1;
-            break;
-        } else {
-            // go on
-            current_weight += 1;
-            current_state = next_states[0].clone();
+            result.push((base.clone(), current_weight));
         }
     }
 
-    let other_nodes = next_states.into_iter().flat_map(|next_state| build_structure(map, next_state, finish_pos, cache));
+    result
+}
 
-    for other_node in other_nodes {
-        result.push(other_node);
+fn build_structure(map: &Map, state: State, finish_pos: (usize, usize), cache: &mut Vec<Position>) -> Vec<Node> {
+    if cache.contains(&state.position) {
+        return vec!();
+    }
+
+    if state.position == finish_pos {
+        return vec!(Node { position: state.position, to: vec!() });
+    }
+
+    cache.push(state.position);
+
+    let mut result = vec!();
+
+    let junctions = find_next_junctions(map, state.clone(), finish_pos);
+
+    result.push(Node { position: state.position, to: junctions.iter().map(|x| (x.0.position, x.1)).collect() });
+
+    for junction in junctions {
+        for next_junction in build_structure(map, junction.0, finish_pos, cache) {
+            result.push(next_junction);
+        }
     }
 
     result
@@ -170,18 +187,39 @@ pub fn part_one(input: &str) -> Option<usize> {
     Some(result)
 }
 
+fn find_longest(position: Position, structure: &HashMap<Position, Node>, current_weight: usize, visited: &mut Vec<Position>) -> Vec<usize> {
+    let node = structure.get(&position).unwrap();
+
+    // finish
+    if node.to.is_empty() {
+        return vec!(current_weight);
+    }
+
+    visited.push(position);
+
+    let mut result = vec!();
+
+    for to in &node.to {
+        if !visited.contains(&to.0) {
+            for x in find_longest(to.0, structure, current_weight + to.1, visited) {
+                result.push(x);
+            }
+        }
+    }
+
+    result
+}
+
 pub fn part_two(input: &str) -> Option<usize> {
     let map = Map::create_part_2(input);
     let start = State { position: (0, 1), direction: (1, 0), distance: 0, tile: Tile::Path };
     let finish_pos = (map.grid.rows - 1, map.grid.columns - 2);
 
+    let structure: HashMap<Position, Node> = build_structure(&map, start, finish_pos, &mut vec!()).iter().map(|x| (x.position, x.clone())).collect();
 
+    dbg!(&structure);
 
-    let sers = build_structure(&map, start, finish_pos, &mut vec!());
-
-    dbg!(&sers);
-
-    Some(1337)
+    Some(*find_longest((0, 1), &structure, 0, &mut vec!()).iter().max().unwrap())
 }
 
 #[cfg(test)]
