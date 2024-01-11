@@ -32,32 +32,23 @@ struct Position(f64, f64, f64);
 #[derive(Debug, Copy, Clone)]
 struct Velocity(f64, f64, f64);
 
-fn get_final_position(hailstone: &Hailstone, min: f64, max: f64) -> Position {
-    let diff_x = if hailstone.velocity.0 > 0. {
-        max - hailstone.position.0
-    } else {
-        hailstone.position.0 - min
-    };
+fn get_positions_range(hailstone: &Hailstone) -> (Position, Position) {
+    let pos_a = hailstone.position;
 
-    let multiplier_x = abs((diff_x / hailstone.velocity.0) as i64);
+    let pos_b = Position(hailstone.position.0 + (hailstone.velocity.0 * 1_000_000_000_000_000_000.),
+                         hailstone.position.1 + (hailstone.velocity.1 * 1_000_000_000_000_000_000.),
+                         hailstone.position.2);
 
-    let diff_y = if hailstone.velocity.1 > 0. {
-        max - hailstone.position.1
-    } else {
-        hailstone.position.1 - min
-    };
-
-    let multiplier_y = abs((diff_y / hailstone.velocity.1) as i64);
-
-    let multiplier = i64::min(multiplier_x, multiplier_y);
-
-    Position(hailstone.position.0 + (hailstone.velocity.0 * multiplier as f64), hailstone.position.1 + (hailstone.velocity.1 * multiplier as f64), hailstone.position.2)
+    (pos_a, pos_b)
 }
 
 pub fn part_one(input: &str) -> Option<usize> {
+    let min = 200000000000000.;
+    let max = 400000000000000.;
+
     let hailstones = input.lines().map(|line| Hailstone::from_str(line).unwrap());
 
-    let x: Vec<_> = hailstones.map(|stone| (stone.position, get_final_position(&stone, 200000000000000., 400000000000000.))).collect();
+    let x: Vec<_> = hailstones.map(|stone| get_positions_range(&stone)).collect();
 
     let mut intersections = vec!();
 
@@ -66,7 +57,9 @@ pub fn part_one(input: &str) -> Option<usize> {
         let line_b = geo::Line::<f64>::from([(b.0.0, b.0.1), (b.1.0, b.1.1)]);
 
         if let Some(Intersection::Intersection(i)) = intersect(&line_a, &line_b) {
-            intersections.push(i);
+            if i.x >= min && i.x <= max && i.y >= min && i.y <= max {
+                intersections.push(i);
+            }
         }
     }
 
