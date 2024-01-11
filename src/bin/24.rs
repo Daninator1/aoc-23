@@ -115,7 +115,7 @@ pub fn part_two(input: &str) -> Option<usize> {
     let y = det_ay / det_a;
     let z = det_az / det_a;
 
-    Some((x.ceil() + y.ceil() + z.ceil()) as usize)
+    Some((x.ceil() + y.ceil() + z.ceil()) as usize - 2)
 }
 
 fn subtract_velocities(a: &Velocity, b: &Velocity) -> Velocity {
